@@ -1,0 +1,6 @@
+venv
+user_data
+__pycache__
+env.ps1
+.cookies
+geckodriver.log

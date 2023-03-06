@@ -1,0 +1,6 @@
+$env:CLIENT_ID="xxxx"
+$env:CLIENT_SECRET="xxxx"
+$env:REDIRECT_URL="http://localhost:3001"
+$env:USERNAME="xxxx"
+$env:PASSWORD="xxxx"
+$env:MODE="SIM"
