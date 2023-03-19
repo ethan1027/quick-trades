@@ -80,40 +80,40 @@ class TradeHistory:
 
 class Trade:
   def __init__(self, order: Order):
-    self.orders = OrderedDict({ order.order_id: order})
+    self.orders = [order]
     self.symbol = order.symbol
 
   def append(self, order: Order):
     if self.is_opened(order) and order.symbol == self.symbol:
-      self.orders[order.order_id] = order
+      self.orders.append(order)
       return True
     return False
 
   @property
   def entry_amount(self):
-    return sum([order.filled_price * order.execution_quantity for order in self.orders.values() if order.is_open and order.is_filled])
+    return sum([order.filled_price * order.execution_quantity for order in self.orders if order.is_open and order.is_filled])
   
   @property
   def entry_quantity(self):
-    return sum([order.execution_quantity for order in self.orders.values() if order.is_open and order.is_filled])
+    return sum([order.execution_quantity for order in self.orders if order.is_open and order.is_filled])
 
   @property
   def exit_amount(self):
-    return sum([order.filled_price * order.execution_quantity for order in self.orders.values() if not order.is_open and order.is_filled])
+    return sum([order.filled_price * order.execution_quantity for order in self.orders if not order.is_open and order.is_filled])
 
   @property
   def exit_quantity(self):
-    return sum([order.execution_quantity for order in self.orders.values() if not order.is_open and order.is_filled])
+    return sum([order.execution_quantity for order in self.orders if not order.is_open and order.is_filled])
 
   @property
   def commission_fee(self):
-    commission = round(sum([order.commission_fee for order in self.orders.values() if order.is_filled]), 2)
+    commission = round(sum([order.commission_fee for order in self.orders if order.is_filled]), 2)
     return commission if self.initial_stop_order.buy_or_sell == 'Sell' else -commission
 
   @property
   def opened_shares(self):
     shares_open = 0
-    for order in self.orders.values():
+    for order in self.orders:
       if order.is_open:
         shares_open += order.execution_quantity
       else:
@@ -132,11 +132,11 @@ class Trade:
     return round(self.entry_amount - self.initial_stop_order.stop_price * self.entry_quantity, 2) * self.side_factor
   @property
   def initial_stop_order(self):
-    return [order for order in self.orders.values() if order.order_type == 'StopMarket'][0]
+    return [order for order in self.orders if order.order_type == 'StopMarket'][0]
   
   @property
   def latest_stop_order(self):
-    return [order for order in self.orders.values() if order.order_type == 'StopMarket'][-1]
+    return [order for order in self.orders if order.order_type == 'StopMarket'][-1]
 
   @property
   def realized_amount(self):
@@ -147,7 +147,7 @@ class Trade:
     return round(self.realized_amount / self.risk_amount, 2)
 
   def resolve_quote(self, quote: Quote):
-    entry_order = [order for order in self.orders.values() if order.is_open and order.is_filled][0]
+    entry_order = [order for order in self.orders if order.is_open and order.is_filled][0]
     return quote.bid if entry_order.buy_or_sell == "Buy" else quote.ask
 
   def unrealized_reward(self, quote: Quote):
@@ -162,7 +162,7 @@ class Trade:
 
   def __repr__(self) -> str:
     trade_str = f"{self.symbol}:\n"
-    for order in self.orders.values():
+    for order in self.orders:
       trade_str += f"  {order}\n"
     trade_str += f"  {self.realized_reward}R, Risk: {self.risk_amount}, Reward: {self.realized_amount} ($)\n"
     return trade_str
