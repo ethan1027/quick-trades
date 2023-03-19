@@ -51,7 +51,7 @@ class TradingBackend(customtkinter.CTk):
     self.symbol = tk.StringVar(value="SPY")
     self.current_symbol = self.symbol.get().upper()
     self.stop_loss = tk.DoubleVar()
-    self.risk = tk.IntVar(value=100)
+    self.risk = tk.IntVar(value=TradeHistory.risk_amount)
     self.is_current_symbol_valid = True
 
   def start_streaming(self):
@@ -306,7 +306,7 @@ class TradingBackend(customtkinter.CTk):
             elif "Deleted" in position_json:
               print(position_json)
               symbol_to_delete = self.position_id_lookup[position_json["PositionID"]]
-              print(f"deleting {symbol_to_delete} position and stop order")
+              print(f"deleting {symbol_to_delete} position")
               self.positions.pop(symbol_to_delete, None)
             else:
               # print("position", position)

@@ -45,37 +45,6 @@ class Order:
     fill_str = f" @ ${self.filled_price}" if self.filled_price else ""
     stop_str = f" with StopPrice @ ${self.stop_price}" if self.stop_price else ""
     return f"{self.opened_date_time} {self.order_id} {self.symbol} {self.open_or_close} {self.buy_or_sell} {self.order_type} order is {self.status_description} for {self.execution_quantity}/{self.ordered_quantity}{fill_str}{stop_str}"
-
-
-class TradeHistory:
-
-  risk_amount = 100
-
-  def __init__(self):
-    self.trade_history: dict[str, list[Trade]] = defaultdict(lambda: [])
-    self.order_history = []
-
-  def append(self, order: Order):
-    trades_by_symbol = self.trade_history[order.symbol]
-    if len(trades_by_symbol) != 0 and trades_by_symbol[-1].is_opened(order):
-      trades_by_symbol[-1].append(order)
-    else:
-      trades_by_symbol.append(Trade(order))
-
-  def get_stop_order(self, symbol: str):
-    return self.trade_history[symbol][-1].latest_stop_order
-  
-  
-  def __repr__(self) -> str:
-    trade_str = "Trade History:\n"
-    realized_pnl = 0
-    for trades in self.trade_history.values():
-      for trade in trades:
-        trade_str += f"{trade}\n"
-        realized_pnl += trade.realized_amount
-
-    trade_str += f"Daily Realized PnL: ${round(realized_pnl, 2)}"
-    return trade_str
   
 
 class Trade:
@@ -120,8 +89,10 @@ class Trade:
         shares_open -= order.execution_quantity
     return shares_open
 
-  def is_opened(self, order: Order):
-    return True if self.opened_shares > 0 or order.order_id == self.latest_stop_order.conditional_order_id else False
+  def is_opened(self, order: Order = None):
+    if order == None:
+      return self.opened_shares > 0
+    return self.opened_shares > 0 or order.order_id == self.latest_stop_order.conditional_order_id
   
   @property
   def side_factor(self):
@@ -167,6 +138,42 @@ class Trade:
     trade_str += f"  {self.realized_reward}R, Risk: {self.risk_amount}, Reward: {self.realized_amount} ($)\n"
     return trade_str
 
+
+class TradeHistory:
+  risk_amount = 100
+
+  def __init__(self):
+    self.trade_history: dict[str, list[Trade]] = defaultdict(lambda: [])
+    self.order_history = []
+
+  def append(self, order: Order):
+    trades_by_symbol = self.trade_history[order.symbol]
+    if len(trades_by_symbol) != 0 and trades_by_symbol[-1].is_opened(order):
+      trades_by_symbol[-1].append(order)
+    else:
+      trades_by_symbol.append(Trade(order))
+
+  def get_stop_order(self, symbol: str):
+    return self.trade_history[symbol][-1].latest_stop_order
+  
+  def get_positions(self) -> dict[str, Trade]:
+    positions = {}
+    for symbol, trades in self.trade_history.items():
+      if len(trades) > 0 and trades[-1].is_opened():
+        positions[symbol] = trades[-1]
+    return positions
+
+  
+  def __repr__(self) -> str:
+    trade_str = "Trade History:\n"
+    realized_pnl = 0
+    for trades in self.trade_history.values():
+      for trade in trades:
+        trade_str += f"{trade}\n"
+        realized_pnl += trade.realized_amount
+
+    trade_str += f"Daily Realized PnL: ${round(realized_pnl, 2)}"
+    return trade_str
 
 
 BuyOrSell = Literal["Buy", "Sell", "SellShort", "BuyToCover"]
