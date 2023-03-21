@@ -140,8 +140,6 @@ class Trade:
 
 
 class TradeHistory:
-  risk_amount = 100
-
   def __init__(self):
     self.trade_history: dict[str, list[Trade]] = defaultdict(lambda: [])
     self.order_history = []

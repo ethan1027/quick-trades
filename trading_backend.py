@@ -39,8 +39,8 @@ class TradingBackend(customtkinter.CTk):
     print("live trading mode") if os.environ["MODE"] == "LIVE" else print("sim trading mode")
     self.accounts = self.get_accounts()
     self.tradeable_account_id = self.accounts["Margin"]["AccountID"]
-    self.positions: dict[str, Position] = {}
-    self.position_id_lookup: dict[str, str] = {}
+    self.positions: dict[str, Trade] = {}
+    # self.position_id_lookup: dict[str, str] = {}
     self.quotes: dict[str, Quote] = {}
     self.trade_history = TradeHistory()
 
@@ -51,17 +51,19 @@ class TradingBackend(customtkinter.CTk):
     self.symbol = tk.StringVar(value="SPY")
     self.current_symbol = self.symbol.get().upper()
     self.stop_loss = tk.DoubleVar()
-    self.risk = tk.IntVar(value=TradeHistory.risk_amount)
+    self.risk = tk.IntVar(value=100)
     self.is_current_symbol_valid = True
 
   def start_streaming(self):
     self.enable_streaming = True
     token_thread = Thread(target=self.run_refresh_token, daemon=True)
     token_thread.start()
-    positions_thread = Thread(target=self.stream_positions)
-    positions_thread.start()
+    # positions_thread = Thread(target=self.stream_positions)
+    # positions_thread.start()
     orders_thread = Thread(target=self.stream_orders)
     orders_thread.start()
+    quotes_thread = Thread(target=self.stream_quotes)
+    quotes_thread.start()
 
 
   @staticmethod
@@ -158,7 +160,7 @@ class TradingBackend(customtkinter.CTk):
   def place_exit_order(self, percent):
     def exit_order_callback():
       if self.is_in_position():
-        current_shares = abs(int(self.positions[self.current_symbol].quantity))
+        current_shares = abs(self.positions[self.current_symbol].opened_shares)
         shares_to_exit = ceil(int(current_shares) * percent)
         shares_to_keep = current_shares - shares_to_exit
         stop_order = self.trade_history.get_stop_order(self.current_symbol)
@@ -183,7 +185,7 @@ class TradingBackend(customtkinter.CTk):
           "Quantity": str(shares_to_exit),
           "OrderType": "Market",
           "Symbol": self.current_symbol,
-          "TradeAction": "BUYTOCOVER" if self.positions[self.current_symbol].long_short == "Short" else "SELL",
+          "TradeAction": "BUYTOCOVER" if self.positions[self.current_symbol].side_factor == -1 else "SELL",
           "Route": "Intelligent"
         }
         response = requests.post(f"{api_url}/orderexecution/orders", json=exit_order_payload, headers=self.headers("json"))
@@ -206,6 +208,7 @@ class TradingBackend(customtkinter.CTk):
             order = Order(order_json)
             print(order)
             self.trade_history.append(order)
+            self.positions = self.trade_history.get_positions()
         else:
           break
       print(self.trade_history)
@@ -240,8 +243,8 @@ class TradingBackend(customtkinter.CTk):
         self.is_current_symbol_valid = True
         if account["AccountID"] != self.tradeable_account_id:
           print(f"switch to {account['AccountType']} account {account['AccountID']}")
-        quotes_thread = Thread(target=self.stream_quotes)
-        quotes_thread.start()
+        # quotes_thread = Thread(target=self.stream_quotes)
+        # quotes_thread.start()
       else:
         print("no account to trade the asset")
         self.is_current_symbol_valid = False
@@ -251,34 +254,40 @@ class TradingBackend(customtkinter.CTk):
       self.is_current_symbol_valid = False
 
 
-  def stream_quotes(self, retry=1):
-    if retry > 3:
-      print('retried 2 times. terminating...')
-      return
-    try:
-      symbol = self.current_symbol
-      response = requests.get(f"{api_url}/marketdata/stream/quotes/{symbol}", headers=self.headers(), stream=True)
-      print(f"start streaming quotes for {symbol}", response.status_code)
-      for line in response.iter_lines():
-        if self.enable_streaming and line and symbol == self.current_symbol:
-          # print(self.current_symbol, line)
-          quote = json.loads(line)
-          if symbol in self.quotes:
-            self.quotes[symbol].update_quote(quote)
+  def get_live_symbols(self) -> str:
+    symbols = set(self.positions.keys())
+    symbols.add(self.current_symbol)
+    return ",".join(sorted(symbols))
+
+  def stream_quotes(self):
+    retry = 0
+    while retry < 3 and self.enable_streaming:
+      try:
+        symbols = self.get_live_symbols()
+        response = requests.get(f"{api_url}/marketdata/stream/quotes/{symbols}", headers=self.headers(), stream=True)
+        print(f"start streaming quotes for {symbols}", response.status_code)
+        for line in response.iter_lines():
+          if self.enable_streaming and line and symbols == self.get_live_symbols():
+            # print(self.current_symbol, line)
+            quote = json.loads(line)
+            symbol = quote.get("Symbol")
+            if symbol:
+              if symbol in self.quotes:
+                self.quotes[symbol].update_quote(quote)
+              else:
+                self.quotes[symbol] = Quote(quote)
+            self.toggle_buy()
+            self.toggle_sell()
           else:
-            self.quotes[symbol] = Quote(quote)
-          self.toggle_buy()
-          self.toggle_sell()
-        else:
-          break
-      print(f"closing quote stream for {symbol}")
-      response.close()
-      self.quotes.pop(self.current_symbol, None)
-    except Exception as e:
-      print("error streaming quotes", e)
-      if response:
+            break
+        print(f"closing quote stream for {symbol}")
         response.close()
-        self.stream_quotes(retry + 1)
+      except Exception as e:
+        print("error streaming quotes", e)
+        retry += 1
+        print('retry streaming quotes')
+        if response:
+          response.close()
 
   def is_ask_less_than_stop(self):
     return True if self.current_symbol in self.quotes and self.quotes[self.current_symbol].ask < self.stop_loss.get() else False
@@ -294,26 +303,26 @@ class TradingBackend(customtkinter.CTk):
       response = requests.get(f"{api_url}/brokerage/stream/accounts/{self.get_account_ids()}/positions", headers=self.headers(), stream=True)
       print("start streaming positions", response.status_code)
       for line in response.iter_lines():
-          if self.enable_streaming and line:
-            position_json = json.loads(line)
+        if self.enable_streaming and line:
+          position_json = json.loads(line)
 
-            symbol_to_add = position_json.get("Symbol")
-            if symbol_to_add:
-              # print("position", position_json)
-              position = Position(position_json)
-              self.positions[symbol_to_add] = position
-              self.position_id_lookup[position.position_id] = symbol_to_add
-            elif "Deleted" in position_json:
-              print(position_json)
-              symbol_to_delete = self.position_id_lookup[position_json["PositionID"]]
-              print(f"deleting {symbol_to_delete} position")
-              self.positions.pop(symbol_to_delete, None)
-            else:
-              # print("position", position)
-              pass
-            self.toggle_exit()
+          symbol_to_add = position_json.get("Symbol")
+          print("position", position_json)
+          if symbol_to_add:
+            position = Position(position_json)
+            self.positions[symbol_to_add] = position
+            self.position_id_lookup[position.position_id] = symbol_to_add
+          elif "Deleted" in position_json:
+            print(position_json)
+            # symbol_to_delete = self.position_id_lookup[position_json["PositionID"]]
+            # print(f"deleting {symbol_to_delete} position")
+            # self.positions.pop(symbol_to_delete, None)
           else:
-            break
+            # print("position", position)
+            pass
+          self.toggle_exit()
+        else:
+          break
       print(f"closing positions stream")
       response.close()
     except Exception as e:

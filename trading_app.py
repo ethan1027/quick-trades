@@ -5,6 +5,21 @@ from trading_backend import TradingBackend
 customtkinter.set_appearance_mode("System")
 customtkinter.set_default_color_theme("blue")
 
+
+# class PositionFrame(customtkinter.CTkFrame):
+#     def __init__(self, master, **kwargs):
+#         super().__init__(master, **kwargs)
+
+#         self.label = customtkinter.CTkLabel(self)
+#         self.label.grid(row=0, column=0, padx=20)
+
+# class OrderFrame(customtkinter.CTkScrollableFrame):
+#     def __init__(self, master, **kwargs):
+#         super().__init__(master, **kwargs)
+
+#         self.label = customtkinter.CTkLabel(self)
+#         self.label.grid(row=0, column=0, padx=20)
+
 class TradingApp(TradingBackend):
   def __init__(self):
     super().__init__()
@@ -64,6 +79,14 @@ class TradingApp(TradingBackend):
     self.cancel_order.grid(row=4, column=0, columnspan=2, padx=2, pady=4)
     self.close_position = customtkinter.CTkButton(master=self, text="Close Position", fg_color="SlateGray4", hover_color="SlateGray3", command=self.place_exit_order(1))
     self.close_position.grid(row=4, column=2, columnspan=2, padx=2, pady=4)
+    
+    self.position_box = customtkinter.CTkTextbox(master=self, width=300, corner_radius=0)
+    self.position_box.grid(row=5, column=0, rowspan=3, columnspan=4, sticky="nsew")
+    self.position_box.insert("0.0", "Position!\n" * 5)
+
+    self.order_box = customtkinter.CTkTextbox(master=self, width=300, corner_radius=0)
+    self.order_box.grid(row=8, column=0, rowspan=10, columnspan=4, sticky="nsew")
+    self.order_box.insert("0.0", "Orders!\n" * 20)
 
 
 
