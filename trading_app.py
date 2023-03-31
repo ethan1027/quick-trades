@@ -86,7 +86,6 @@ class TradingApp(TradingBackend):
 
     self.order_box = customtkinter.CTkTextbox(master=self, width=300, corner_radius=0)
     self.order_box.grid(row=8, column=0, rowspan=10, columnspan=4, sticky="nsew")
-    self.order_box.insert("0.0", "Orders!\n" * 20)
 
 
 

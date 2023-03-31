@@ -27,11 +27,19 @@ class Order:
 
   @property
   def is_open(self):
-    return True if self.open_or_close == "Open" else False
+    return self.open_or_close == "Open"
   
   @property
   def is_filled(self):
-    return True if self.status == "FLL" else False
+    return self.status_description == "Filled"
+  
+  @property
+  def is_rejected(self):
+    return self.status_description == "Rejected"
+
+  @property
+  def is_stop_order(self):
+    return self.order_type == "StopMarket"
   
   @property
   def conditional_order_id(self):
@@ -40,6 +48,12 @@ class Order:
       return conditional_orders[0]["OrderID"]
     else:
       return None
+
+  def __eq__(self, order: object) -> bool:
+    return isinstance(order, Order) and self.__repr__() == order.__repr__()
+  
+  def __hash__(self) -> int:
+    return hash(self.__repr__())
   
   def __repr__(self) -> str:
     fill_str = f" @ ${self.filled_price}" if self.filled_price else ""
@@ -49,12 +63,12 @@ class Order:
 
 class Trade:
   def __init__(self, order: Order):
-    self.orders = [order]
+    self.orders = { order }
     self.symbol = order.symbol
 
   def append(self, order: Order):
     if self.is_opened(order) and order.symbol == self.symbol:
-      self.orders.append(order)
+      self.orders.add(order)
       return True
     return False
 
@@ -83,10 +97,11 @@ class Trade:
   def opened_shares(self):
     shares_open = 0
     for order in self.orders:
-      if order.is_open:
-        shares_open += order.execution_quantity
-      else:
-        shares_open -= order.execution_quantity
+      if order.is_filled:
+        if order.is_open:
+          shares_open += order.execution_quantity
+        else:
+          shares_open -= order.execution_quantity
     return shares_open
 
   def is_opened(self, order: Order = None):
@@ -100,14 +115,14 @@ class Trade:
 
   @property
   def risk_amount(self):
-    return round(self.entry_amount - self.initial_stop_order.stop_price * self.entry_quantity, 2) * self.side_factor
+    return round(self.entry_amount - self.initial_stop_order.stop_price * self.entry_quantity, 2) * self.side_factor or 100
   @property
   def initial_stop_order(self):
-    return [order for order in self.orders if order.order_type == 'StopMarket'][0]
+    return [order for order in self.orders if order.is_stop_order][0]
   
   @property
   def latest_stop_order(self):
-    return [order for order in self.orders if order.order_type == 'StopMarket'][-1]
+    return [order for order in self.orders if order.is_stop_order][-1]
 
   @property
   def realized_amount(self):
@@ -145,10 +160,13 @@ class TradeHistory:
     self.order_history = []
 
   def append(self, order: Order):
+    self.order_history.append(order)
+    if order.is_rejected:
+      return
     trades_by_symbol = self.trade_history[order.symbol]
     if len(trades_by_symbol) != 0 and trades_by_symbol[-1].is_opened(order):
       trades_by_symbol[-1].append(order)
-    else:
+    elif order.is_open or order.is_stop_order:
       trades_by_symbol.append(Trade(order))
 
   def get_stop_order(self, symbol: str):
@@ -172,6 +190,11 @@ class TradeHistory:
 
     trade_str += f"Daily Realized PnL: ${round(realized_pnl, 2)}"
     return trade_str
+  
+  def print_order_history(self) -> str:
+    order_str = ""
+    for order in self.order_history:
+      order_str += f"{order}\n"
 
 
 BuyOrSell = Literal["Buy", "Sell", "SellShort", "BuyToCover"]
